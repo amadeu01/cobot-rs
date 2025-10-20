@@ -11,16 +11,17 @@ path = "./src/bin/main.rs"
 [features]
 default = []
 
-# experimental = ["esp-idf-svc/experimental"]
+experimental = ["esp-idf-svc/experimental"]
 
 [dependencies]
 log = "0.4"
 esp-idf-svc = { version = "0.51.0", default-features = false, features = ["std", "alloc", "experimental"] }
 esp-idf-hal = "0.45.2"
-# embedded-hal = "0.2.7"
+embedded-hal = "0.2.7"
 anyhow = "1.0"
-# embedded-io = "^0.7.0"
 
+[build-dependencies]
+embuild = "=0.33.0"
 
 [profile.dev]
 # Rust debug is too slow.
