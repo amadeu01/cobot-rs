@@ -7,16 +7,19 @@ version      = "0.1.0"
 [[bin]]
 name = "cobot-rs"
 path = "./src/bin/main.rs"
+harness = false
 
 [dependencies]
 esp-hal = { version = "=1.0.0-rc.1", features = ["esp32", "unstable"] }
-
-
+esp-println = { version = "0.11.0", features = ["esp32"] }
 esp-bootloader-esp-idf = { version = "0.3.0", features = ["esp32"] }
 
 critical-section = "1.2.0"
 rtt-target       = "0.6.1"
-
+log = "0.4.17"
+# esp-idf-svc = "0.51"
+# embedded-svc = "=0.28.1"
+embedded-hal = "1.0.0"
 
 [profile.dev]
 # Rust debug is too slow.

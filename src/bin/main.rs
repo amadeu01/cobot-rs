@@ -7,9 +7,12 @@
 )]
 
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::Io;
 use esp_hal::main;
 use esp_hal::time::{Duration, Instant};
-use rtt_target::rprintln;
+use esp_println::println;
+// use esp_hal::ledc::{Ledc, LedcTimer, LedcTimerDriver};
+// use esp_hal::prelude::*;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -22,15 +25,79 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[main]
 fn main() -> ! {
-    // generator version: 0.6.0
-
     rtt_target::rtt_init_print!();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let _peripherals = esp_hal::init(config);
+    // let io = Io::new(_peripherals.GPIO, _peripherals.IO_MUX);
+
+    // // Initialize LEDC peripheral for PWM
+    // let mut ledc = Ledc::new(_peripherals.LEDC);
+    // ledc.set_global_slow_clock(esp_hal::ledc::LSGlobalClkSource::APBClk);
+
+    // let mut lstimer0 = ledc.timer::<esp_hal::ledc::LowSpeed>(esp_hal::ledc::timer::Number::Timer0);
+    // lstimer0
+    //     .configure(esp_hal::ledc::timer::config::Config {
+    //         duty: esp_hal::ledc::timer::config::Duty::Duty14Bit,
+    //         clock_source: esp_hal::ledc::LSClockSource::APBClk,
+    //         frequency: 50u32.Hz(),
+    //     })
+    //     .unwrap();
+
+    // // Configure servo pins
+    // let right_back_leg_pin = io.pins.gpio23;
+    // let left_back_leg_pin = io.pins.gpio22;
+    // let right_front_leg_pin = io.pins.gpio19;
+    // let left_front_leg_pin = io.pins.gpio18;
+    //
+    // let mut right_back_servo = ledc
+    //     .channel(esp_hal::ledc::channel::Number::Channel0, right_back_leg_pin)
+    //     .configure(esp_hal::ledc::channel::config::Config {
+    //         timer: &lstimer0,
+    //         duty_pct: 7, // ~90 degrees (1.5ms pulse width)
+    //         pin_config: esp_hal::ledc::channel::config::PinConfig::PushPull,
+    //     })
+    //     .unwrap();
+
+    println!("####");
+    println!("Hello world!");
+    println!("Hello world!");
+    println!("Hello world!");
+    println!("Hello world!");
+    println!("####");
 
     loop {
-        rprintln!("Hello world!");
+        // Create PWM channels for each servo
+
+        // let mut left_back_servo = ledc
+        //     .channel(esp_hal::ledc::channel::Number::Channel1, left_back_leg_pin)
+        //     .configure(esp_hal::ledc::channel::config::Config {
+        //         timer: &lstimer0,
+        //         duty_pct: 7, // ~90 degrees (1.5ms pulse width)
+        //         pin_config: esp_hal::ledc::channel::config::PinConfig::PushPull,
+        //     })
+        //     .unwrap();
+
+        // let mut right_front_servo = ledc
+        //     .channel(esp_hal::ledc::channel::Number::Channel2, right_front_leg_pin)
+        //     .configure(esp_hal::ledc::channel::config::Config {
+        //         timer: &lstimer0,
+        //         duty_pct: 7, // ~90 degrees (1.5ms pulse width)
+        //         pin_config: esp_hal::ledc::channel::config::PinConfig::PushPull,
+        //     })
+        //     .unwrap();
+
+        // let mut left_front_servo = ledc
+        //     .channel(esp_hal::ledc::channel::Number::Channel3, left_front_leg_pin)
+        //     .configure(esp_hal::ledc::channel::config::Config {
+        //         timer: &lstimer0,
+        //         duty_pct: 7, // ~90 degrees (1.5ms pulse width)
+        //         pin_config: esp_hal::ledc::channel::config::PinConfig::PushPull,
+        //     })
+        //     .unwrap();
+
+        println!("Servos set to 90 degrees");
+
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
     }
