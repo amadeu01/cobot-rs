@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test-math:
+    name: Test Mathematical Functions
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Create build directory
+      run: mkdir -p build
+
+    - name: Run mathematical function tests
+      run: |
+        rustc --test tests/servo_math.rs -o build/servo_math
+        ./build/servo_math
+
+    - name: Run visual demonstration
+      run: |
+        rustc tests/servo_math.rs -o build/servo_math_demo
+        ./build/servo_math_demo
+
+  build-esp32:
+    name: Build ESP32 Target
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+
+    - name: Set up ESP-IDF
+      uses: espressif/esp-idf-action@v1
+      with:
+        esp-idf-version: v5.1.2
+        target: esp32
+
+    - name: Install ESP Rust toolchain
+      run: |
+        curl -L https://github.com/esp-rs/rust-build/releases/download/v1.77.2.0/install-rust-toolchain.sh | sh
+        export PATH=$PATH:$HOME/.rustup/toolchains/esp/bin
+        rustup default esp
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-esp32-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build ESP32 project
+      run: |
+        export PATH=$PATH:$HOME/.rustup/toolchains/esp/bin
+        . $IDF_PATH/export.sh
+        cargo build --release
+      env:
+        ESP_IDF_VERSION: v5.1.2
+
+  check-docs:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Check that documentation builds
+      run: cargo doc --no-deps --document-private-items
+
+    - name: Check for broken internal links in docs
+      run: |
+        find docs/ -name "*.md" -exec grep -l "](.*\.md)" {} \; | while read file; do
+          echo "Checking links in $file"
+          grep -o "](.*\.md)" "$file" | sed 's/](\(.*\.md\))/\1/' | while read link; do
+            if [[ "$link" =~ ^http ]]; then
+              continue
+            fi
+            full_path="$(dirname "$file")/$link"
+            if [ ! -f "$full_path" ]; then
+              echo "ERROR: Broken link in $file: $link -> $full_path"
+              exit 1
+            fi
+          done
+        done
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run security audit
+      run: cargo audit
+
+  check-scripts:
+    name: Check Scripts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check shell scripts with shellcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        find scripts/ -name "*.sh" -exec shellcheck {} \;
+
+    - name: Test script functionality
+      run: |
+        chmod +x scripts/test.sh
+        ./scripts/test.sh --help
+        ./scripts/test.sh --clean
+        ./scripts/test.sh --demo
+        ./scripts/test.sh
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test-math, build-esp32, check-docs, security-audit, check-scripts]
+    if: always()
+    steps:
+    - name: Check all jobs
+      run: |
+        echo "Lint: ${{ needs.lint.result }}"
+        echo "Test Math: ${{ needs.test-math.result }}"
+        echo "Build ESP32: ${{ needs.build-esp32.result }}"
+        echo "Check Docs: ${{ needs.check-docs.result }}"
+        echo "Security Audit: ${{ needs.security-audit.result }}"
+        echo "Check Scripts: ${{ needs.check-scripts.result }}"
+
+        if [[ "${{ needs.lint.result }}" != "success" ]] || \
+           [[ "${{ needs.test-math.result }}" != "success" ]] || \
+           [[ "${{ needs.build-esp32.result }}" != "success" ]] || \
+           [[ "${{ needs.check-docs.result }}" != "success" ]] || \
+           [[ "${{ needs.security-audit.result }}" != "success" ]] || \
+           [[ "${{ needs.check-scripts.result }}" != "success" ]]; then
+          echo "❌ Some checks failed"
+          exit 1
+        else
+          echo "✅ All checks passed!"
+        fi

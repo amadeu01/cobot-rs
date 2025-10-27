@@ -7,9 +7,9 @@ This document describes the testing strategy and implementation for the Cobot-RS
 The servo controller uses a two-tier testing approach:
 
 1. **Embedded Unit Tests** - Basic tests within `servo_controller.rs` for hardware-dependent code
-2. **Standalone Test Suite** - Comprehensive tests in `test_servo_controller.rs` without ESP32 dependencies
+2. **Standalone Test Suite** - Comprehensive tests in `tests/servo_math.rs` without ESP32 dependencies
 
-Due to ESP32-IDF dependencies, comprehensive testing requires the standalone test suite that can run on any platform.
+Due to ESP-IDF dependencies, comprehensive testing requires the standalone test suite that can run on any platform. Test binaries are compiled to the `build/` directory to keep the project organized and are git-ignored.
 
 ## Test Structure
 
@@ -22,7 +22,7 @@ Minimal tests that can run with ESP32 dependencies:
 
 These tests are limited but ensure core mathematical functions work correctly in the ESP32 environment.
 
-### 2. Standalone Test Suite (`test_servo_controller.rs`)
+### 2. Standalone Test Suite (`tests/servo_math.rs`)
 
 Comprehensive testing without hardware dependencies:
 - **Mathematical Function Tests**: Full validation of all conversion functions
@@ -35,8 +35,17 @@ Comprehensive testing without hardware dependencies:
 ### Standalone Test Suite (Recommended)
 
 ```bash
-# Compile and run comprehensive tests
-rustc test_servo_controller.rs && ./test_servo_controller
+# Use the convenient test script
+./scripts/test.sh           # Run unit tests
+./scripts/test.sh --demo    # Run visual demonstration
+./scripts/test.sh --clean   # Clean build directory
+./scripts/test.sh --help    # Show all options
+
+# Or compile and run manually (outputs to build directory)
+rustc --test tests/servo_math.rs -o build/servo_math && ./build/servo_math
+
+# Or run with visual output (no unit tests)
+rustc tests/servo_math.rs -o build/servo_math && ./build/servo_math
 ```
 
 ### Embedded Unit Tests
@@ -53,28 +62,36 @@ The test suite includes 33+ individual test cases covering:
 
 | Test Category | Test Count | Description | Location |
 |---------------|------------|-------------|----------|
-| Embedded Basic Tests | 3 | Core function validation | `servo_controller.rs` |
-| Pulse Conversion | 5 | Angle to pulse width mapping | `test_servo_controller.rs` |
-| Duty Calculation | 6 | PWM duty cycle calculations | `test_servo_controller.rs` |
-| Range Validation | 3 | Boundary condition testing | `test_servo_controller.rs` |
-| Mock Hardware | 8 | Hardware simulation tests | `test_servo_controller.rs` |
-| Robot Behaviors | 11+ | Walking patterns and movements | `test_servo_controller.rs` |
+| Embedded Basic Tests | 6 | Core function validation | `servo_controller.rs` |
+| Pulse Conversion | 3 | Angle to pulse width mapping | `tests/servo_math.rs` |
+| Duty Calculation | 4 | PWM duty cycle calculations | `tests/servo_math.rs` |
+| Range Validation | 2 | Boundary condition testing | `tests/servo_math.rs` |
+| Precision Testing | 1 | Mathematical precision validation | `tests/servo_math.rs` |
 
 ### Expected Output
 
 ```
-=== Servo Controller Unit Tests ===
+=== Servo Controller Mathematical Function Tests ===
 
-Testing angle to pulse conversion...
-Testing angle to duty calculations...
-Testing duty cycle range...
+Testing basic angle to duty conversion:
+  0° → duty: 25, pulse: 500µs
+  30° → duty: 42, pulse: 833µs
+  90° → duty: 76, pulse: 1500µs
+  180° → duty: 128, pulse: 2500µs
+
+Testing different PWM resolutions:
+  8-bit (256): 90° = 19 duty (7.4%)
+  10-bit (1024): 90° = 76 duty (7.4%)
+  12-bit (4096): 90° = 307 duty (7.5%)
+
+=== All basic tests passed! ===
+
+running 10 tests
+test tests::test_angle_clamping ... ok
+test tests::test_duty_bounds ... ok
+test tests::test_roundtrip_conversion ... ok
 ...
-
-=== Test Results Summary ===
-Total Tests: 33
-Passed: 33
-Failed: 0
-Success Rate: 100.0%
+test result: ok. 9 passed; 1 failed; 0 ignored
 ```
 
 ## Key Test Scenarios
@@ -118,7 +135,7 @@ assert_within_tolerance(actual_angle, expected_angle, 2);
 
 ### ESP32 LEDC Configuration
 
-Tests validate calculations for different LEDC resolutions:
+Tests validate calculations for different PWM resolutions:
 
 - **10-bit (1024 levels)**: Default ESP32 configuration
 - **14-bit (16384 levels)**: Higher precision option
@@ -137,14 +154,18 @@ Tests use standard hobby servo parameters:
 Tests verify that parallel servo calculations work correctly:
 
 ```rust
-// Simulate parallel duty calculations
-let angles = vec![0, 45, 90, 135, 180];
-let duties: Vec<u32> = angles
-    .iter()
-    .map(|angle| angle_to_duty(*angle, max_duty))
-    .collect();
+// Test different PWM resolutions
+let resolutions = vec![
+    ("8-bit", 256),
+    ("10-bit", 1024),
+    ("12-bit", 4096),
+    ("14-bit", 16384),
+];
 
-// Verify results are consistent with sequential calculation
+for (name, max_duty) in resolutions {
+    let duty_90 = angle_to_duty(90, max_duty);
+    // Verify calculations work across all resolutions
+}
 ```
 
 ## Error Conditions
@@ -171,26 +192,25 @@ Limited to tests that don't require mock hardware:
 2. Keep tests simple and focused on mathematical functions
 3. Avoid complex setup or mock objects due to ESP32 constraints
 
-### For Standalone Tests (test_servo_controller.rs)
+### For Standalone Tests (tests/servo_math.rs)
 Full testing capabilities:
-1. **Add to TestRunner**: Implement new test methods
-2. **Call from run_all_tests()**: Include in test execution
+1. **Add test function**: Create new `#[test]` function in the `tests` module
+2. **Compile and run**: Use `rustc --test tests/servo_math.rs -o build/servo_math && ./build/servo_math`
 3. **Update Documentation**: Document new test scenarios
-4. **Verify Coverage**: Ensure all code paths are tested
+4. **Build Directory**: All test binaries output to `build/` directory (git-ignored)
 
 ### Example New Test
 
 ```rust
-fn test_new_behavior(&mut self) {
-    println!("Testing new behavior...");
-    
-    let mut controller = MockServoController::new(1024);
+#[test]
+fn test_new_behavior() {
+    let max_duty = 1024;
     
     // Test implementation
-    controller.some_new_method().unwrap();
+    let result = angle_to_duty(new_angle, max_duty);
     
     // Assertions
-    self.assert_eq("New behavior", expected, actual);
+    assert_eq!(result, expected_value, "New behavior should work correctly");
 }
 ```
 
@@ -202,9 +222,9 @@ fn test_new_behavior(&mut self) {
 - **No Mock Hardware**: Cannot test complex behaviors or hardware simulation
 
 ### Standalone Tests  
-- **No Real Hardware**: Tests use mocks, may miss hardware-specific issues
-- **Integer Precision**: Some precision loss is expected and tolerated
-- **Threading Simulation**: Parallel execution benefits are simulated, not measured
+- **No Real Hardware**: Tests focus on mathematical functions, may miss hardware-specific issues
+- **Integer Precision**: Some precision loss is expected and tolerated in roundtrip tests
+- **Build Directory**: Compiled binaries are placed in `build/` to keep project organized
 
 ## Why Two Test Approaches?
 
@@ -212,7 +232,26 @@ The dual approach exists because:
 1. **ESP-IDF Constraints**: Standard Rust testing doesn't work with ESP32 dependencies
 2. **Development Flexibility**: Standalone tests can run on any development machine
 3. **Hardware Validation**: Embedded tests ensure code works in the actual target environment
-4. **Comprehensive Coverage**: Combined approach provides both basic validation and comprehensive testing
+4. **Clean Organization**: Tests are in `tests/` directory, binaries in `build/` (git-ignored)
+5. **Comprehensive Coverage**: Combined approach provides both basic validation and comprehensive testing
+
+## Project Structure
+
+```
+cobot-rs/
+├── src/
+│   ├── main.rs              # ESP32 main program  
+│   └── servo_controller.rs  # Servo logic + embedded tests
+├── tests/
+│   └── servo_math.rs        # Standalone mathematical function tests
+├── scripts/
+│   └── test.sh              # Convenient test runner script
+├── build/                   # Compiled test binaries (git-ignored)
+│   └── servo_math           # Compiled test executable
+├── .github/workflows/       # CI/CD automation
+├── docs/                    # Documentation
+└── .gitignore               # Excludes build/ directory and binaries
+```
 
 ## Future Improvements
 
@@ -238,4 +277,22 @@ Enable detailed logging by modifying test assertions:
 println!("Debug: angle={}, duty={}, recovered={}", angle, duty, recovered_angle);
 ```
 
-This comprehensive testing approach ensures the servo controller functions correctly across all supported scenarios while maintaining compatibility with the ESP32 embedded environment.
+### Build Directory Management
+
+The `build/` directory contains compiled test binaries and is git-ignored:
+
+```bash
+# Clean build directory using script
+./scripts/test.sh --clean
+
+# Or manually
+rm -rf build/*
+
+# Rebuild tests using script
+./scripts/test.sh
+
+# Or manually
+rustc --test tests/servo_math.rs -o build/servo_math
+```
+
+This comprehensive testing approach ensures the servo controller functions correctly across all supported scenarios while maintaining compatibility with the ESP32 embedded environment and following proper project organization practices.

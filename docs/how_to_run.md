@@ -149,45 +149,93 @@ If you encounter issues:
 
 ## Testing
 
-The project uses a simple testing approach focused on what actually works in embedded environments.
+The project uses a practical testing approach that works both with and without ESP32 hardware.
 
 ### Quick Start - Run Tests
 
+**Option 1: Use the convenient test script (recommended):**
 ```bash
-# Run embedded unit tests (tests core mathematical functions)
+./scripts/test.sh           # Run unit tests
+./scripts/test.sh --demo    # Run visual demonstration  
+./scripts/test.sh --clean   # Clean build directory
+./scripts/test.sh --help    # Show help
+```
+
+**Option 2: Run manually:**
+```bash
+# Compile and run unit tests
+rustc --test tests/servo_math.rs -o build/servo_math && ./build/servo_math
+
+# Or run visual demonstration
+rustc tests/servo_math.rs -o build/servo_math && ./build/servo_math
+```
+
+**Option 3: Run embedded tests on ESP32 (requires connected hardware):**
+```bash
+# This will try to flash test binary to ESP32 board
 cargo test
 ```
 
-**Note:** Tests may fail due to ESP32 hardware dependencies, but this is expected. The core mathematical functions are still validated.
+**Note:** `cargo test` requires an ESP32 board connected via USB because it uses `espflash` as the test runner.
 
 ### Testing Strategy
 
-The project includes unit tests directly in the servo controller module:
+**Mathematical Functions (tests/servo_math.rs):**
+- **Core Calculations**: Tests for `angle_to_duty`, `duty_to_angle`, pulse width calculations
+- **Precision**: Roundtrip accuracy, boundary conditions, different PWM resolutions
+- **Range Validation**: Angle clamping, duty cycle bounds
+- **No Dependencies**: Runs on any system without ESP32 hardware
+- **Build Directory**: Compiled test binaries are output to `build/` directory
 
-- **Mathematical Functions**: Tests for `angle_to_duty`, `duty_to_angle`, pulse width calculations
-- **Data Structures**: Tests for `ServoOperation` and other core types
-- **Boundary Conditions**: Angle clamping, duty cycle bounds, roundtrip accuracy
+**Embedded Tests (servo_controller.rs):**
+- **Hardware Integration**: Tests that run on actual ESP32
+- **Real Environment**: Validates functions in the target embedded environment
+- **Requires Hardware**: Must have ESP32 connected to run
 
-### Why Simple Testing?
+### Why This Approach?
 
-ESP32 embedded environments have constraints that make complex testing difficult:
+This dual approach balances development speed with hardware validation:
 
-- **Memory Limits**: Complex test frameworks can exceed available RAM
-- **Hardware Dependencies**: Some functionality requires actual ESP32 hardware
-- **Deployment Focus**: Manual testing on hardware is often more valuable
+- **Development Speed**: Mathematical tests run instantly on your development machine
+- **Hardware Validation**: Embedded tests ensure everything works on the actual ESP32
+- **No Mock Complexity**: Avoids complicated mock frameworks that add maintenance burden
 
-The tests focus on the core mathematical functions that can be reliably validated without hardware.
+### What Gets Tested
 
-For the complete testing philosophy, see [`docs/architecture/simple_approach.md`](architecture/simple_approach.md).
+The mathematical functions cover the core servo control logic:
+- Angle to PWM duty cycle conversion (0-180° → duty values)
+- Pulse width calculations (500-2500 microseconds)
+- Different PWM resolutions (8-bit to 16-bit)
+- Precision and error bounds
+- Edge cases and boundary conditions
+
+### Project Structure
+
+```
+cobot-rs/
+├── src/
+│   ├── main.rs              # ESP32 main program
+│   └── servo_controller.rs  # Servo logic + embedded tests
+├── tests/
+│   └── servo_math.rs        # Standalone mathematical function tests
+├── scripts/                 # Build and test scripts
+│   └── test.sh             # Convenient test runner script
+├── build/                   # Compiled test binaries (git-ignored)
+└── docs/                    # Documentation
+```
+
+For the complete testing philosophy, see [`docs/testing.md`](testing.md).
 
 ## Development Workflow
 
 For active development:
 
 1. **Code** → Make your changes
-2. **Test** → `cargo run` (for faster debug builds)
-3. **Deploy** → `cargo run --release` (for optimized builds)
-4. **Monitor** → Watch serial output for debugging
+2. **Test Math** → `./scripts/test.sh` (instant feedback)
+3. **Visual Check** → `./scripts/test.sh --demo` (see calculations)
+4. **Test Hardware** → `cargo run` (for faster debug builds)
+5. **Deploy** → `cargo run --release` (for optimized builds)
+6. **Monitor** → Watch serial output for debugging
 
 The configuration is optimized for this workflow with automatic building, flashing, and monitoring in a single command.
 
