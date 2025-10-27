@@ -1,73 +1,87 @@
 use anyhow::Result;
 use esp_idf_hal::delay::FreeRtos;
-use esp_idf_hal::ledc::{LedcDriver, LedcTimerDriver, config::TimerConfig};
 use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_hal::units::Hertz;
-// Servo configuration constants
-const FREQUENCY: u32 = 50; // 50 Hz for servos
 
-// Standard hobby servo constants
-const MIN_PULSE_US: u32 = 500;   // Microseconds for 0 degrees (approx 0.5ms)
-const MAX_PULSE_US: u32 = 2500;  // Microseconds for 180 degrees (approx 2.5ms)
-const PERIOD_US: u32 = 20000;    // Microseconds for 50Hz (20ms)
+mod servo_controller;
 
-/// Maps a servo angle (0-180) to the required duty cycle value.
-///
-/// For 90 degrees, this should result in a 1500us (1.5ms) pulse.
-fn angle_to_duty(angle: u32, max_duty: u32) -> u32 {
-    // 1. Calculate the required pulse width in microseconds (us)
-    // The pulse width is linearly interpolated between MIN_PULSE_US (0 deg) and MAX_PULSE_US (180 deg).
-    let pulse_us = MIN_PULSE_US + (angle * (MAX_PULSE_US - MIN_PULSE_US) / 180);
-
-    // 2. Convert the pulse width (us) to the LEDC duty value
-    // Duty Value = (Pulse Width / Period) * Max Duty
-    // Note: All calculations must use integer arithmetic, so careful ordering is needed.
-    // The division by PERIOD_US (20000) is done last to preserve precision.
-    let duty = (pulse_us * max_duty) / PERIOD_US;
-    
-    // Safety check, although calculation should prevent overflow
-    core::cmp::min(duty, max_duty) 
-}
+use servo_controller::{demo_servo_movements, setup_servos};
 
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
-    // Function to set up servo motors
 
-    setup_servos(Peripherals::take().unwrap())?;
-    
-    
+    log::info!("Starting Cobot-RS servo controller with parallel execution");
+
+    // Set up servo motors
+    let mut servo_controller = setup_servos(Peripherals::take().unwrap())?;
+
+    // Run servo demonstration with parallel control
+    demo_servo_movements(&mut servo_controller)?;
+
+    log::info!("Servo setup complete, entering main loop with parallel servo control");
+
+    // Main loop - robot behavior demonstration with parallel servo control
     loop {
+        // Example 1: Walking pattern with parallel servo calculation
+        log::info!("Performing walking motion with parallel servo control...");
+        servo_controller.walk_forward(300)?;
         FreeRtos::delay_ms(1000);
+
+        // Example 2: Wave gesture with threaded calculation
+        log::info!("Performing wave gesture with parallel calculation...");
+        servo_controller.wave(50)?;
+        FreeRtos::delay_ms(1000);
+
+        // Example 3: Side-to-side movement with parallel execution
+        log::info!("Performing side movements with parallel servo control...");
+        servo_controller.set_right_servos(45, 45)?;
+        FreeRtos::delay_ms(500);
+        servo_controller.set_left_servos(135, 135)?;
+        FreeRtos::delay_ms(500);
+        servo_controller.center_all_servos()?;
+        FreeRtos::delay_ms(500);
+
+        // Example 4: Diagonal stretch with parallel calculation
+        log::info!("Performing diagonal stretch with parallel servo control...");
+        servo_controller.set_servo_angles(30, 150, 150, 30)?;
+        FreeRtos::delay_ms(1000);
+        servo_controller.center_all_servos()?;
+        FreeRtos::delay_ms(500);
+
+        // Example 5: Simple alternating leg movement with parallel execution
+        log::info!("Performing alternating leg movement with parallel servo control...");
+        for _ in 0..3 {
+            // Lift right legs - calculations done in parallel
+            servo_controller.set_servo_angles(45, 90, 45, 90)?;
+            FreeRtos::delay_ms(400);
+
+            // Return to center - all servos set in parallel
+            servo_controller.set_all_servos_angle(90)?;
+            FreeRtos::delay_ms(400);
+
+            // Lift left legs - calculations done in parallel
+            servo_controller.set_servo_angles(90, 45, 90, 45)?;
+            FreeRtos::delay_ms(400);
+
+            // Return to center - all servos set in parallel
+            servo_controller.set_all_servos_angle(90)?;
+            FreeRtos::delay_ms(400);
+        }
+
+        // Example 6: All servos to different positions simultaneously
+        log::info!("Testing all servos to different angles with parallel execution...");
+        servo_controller.set_all_servos_angle(0)?;
+        FreeRtos::delay_ms(1000);
+        servo_controller.set_all_servos_angle(90)?;
+        FreeRtos::delay_ms(1000);
+        servo_controller.set_all_servos_angle(180)?;
+        FreeRtos::delay_ms(1000);
+        servo_controller.set_all_servos_angle(90)?;
+        FreeRtos::delay_ms(1000);
+
+        log::info!(
+            "Behavior cycle complete with parallel servo control, waiting before next cycle..."
+        );
+        FreeRtos::delay_ms(5000);
     }
-}
-
-fn setup_servos(peripherals: Peripherals) -> Result<()> {
-    // LEDC Timer configuration
-    let timer_config = TimerConfig::default()
-        .frequency(Hertz(FREQUENCY).into())
-        .resolution(esp_idf_hal::ledc::Resolution::Bits10);
-
-    let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &timer_config)?;
-
-    let mut right_back_leg =
-        LedcDriver::new(peripherals.ledc.channel0, &timer, peripherals.pins.gpio23)?;
-
-    let mut left_back_leg =
-        LedcDriver::new(peripherals.ledc.channel1, &timer, peripherals.pins.gpio22)?;
-
-    let mut right_front_leg =
-        LedcDriver::new(peripherals.ledc.channel2, &timer, peripherals.pins.gpio19)?;
-
-    let mut left_front_leg =
-        LedcDriver::new(peripherals.ledc.channel3, &timer, peripherals.pins.gpio18)?;
-
-    right_back_leg.set_duty(angle_to_duty(90, right_back_leg.get_max_duty()))?;
-    left_back_leg.set_duty(angle_to_duty(90, left_back_leg.get_max_duty()))?;
-    right_front_leg.set_duty(angle_to_duty(90, right_front_leg.get_max_duty()))?;
-    left_front_leg.set_duty(angle_to_duty(90, left_front_leg.get_max_duty()))?;
-
-    log::info!("Servos initialized to 90 degrees.");
-
-    Ok(())
 }

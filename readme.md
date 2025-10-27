@@ -43,9 +43,21 @@ This project serves as a learning platform for:
 - [ ] Sensor data processing
 - [ ] Communication protocols
 
+## Quick Start
+
+1. **Prerequisites**: Make sure you have the ESP32 Rust development environment set up
+2. **Connect**: Connect your ESP32 board via USB
+3. **Deploy**: Run the following command to build and flash the firmware:
+
+```bash
+cargo run --release
+```
+
+This will compile the project, flash it to your ESP32, and start monitoring the serial output.
+
 ## Getting Started
 
-(to be added)
+For detailed setup instructions, deployment options, and troubleshooting, see the [How to Run Guide](docs/how_to_run.md).
 
 ## Hardware Requirements
 
