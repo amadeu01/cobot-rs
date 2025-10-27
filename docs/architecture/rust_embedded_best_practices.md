@@ -19,7 +19,7 @@ The Cobot-RS project demonstrates proper Rust embedded architecture by solving c
 ```
 ┌─────────────────────────────────────┐
 │          Application Layer          │  ← main.rs, robot behaviors
-│  (Business Logic, Movement Patterns) │
+│ (Business Logic, Movement Patterns) │
 ├─────────────────────────────────────┤
 │         Abstraction Layer           │  ← Traits, generic controllers
 │    (Hardware-agnostic interfaces)   │

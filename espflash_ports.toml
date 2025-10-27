@@ -1,2 +1,2 @@
 [connection]
-serial = "/dev/ttyUSB0"
+serial = "/dev/ttyUSB1"
