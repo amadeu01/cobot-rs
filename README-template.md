@@ -1,9 +1,15 @@
-![Cobot-RS banner](https://raw.githubusercontent.com/amadeu01/cobot-rs/main/assets/banner.png)
+![Cobot-RS banner](https://raw.githubusercontent.com/YOUR_USERNAME/cobot-rs/main/assets/banner.png)
 
 # Cobot-RS
 
-[![Core CI](https://github.com/amadeu01/cobot-rs/workflows/Core%20CI/badge.svg)](https://github.com/amadeu01/cobot-rs/actions/workflows/core.yml)
-[![Mathematical Tests](https://github.com/amadeu01/cobot-rs/workflows/Core%20CI/badge.svg?event=push)](https://github.com/amadeu01/cobot-rs/actions/workflows/core.yml)
+<!-- 
+🔧 SETUP INSTRUCTIONS: Replace YOUR_USERNAME with your actual GitHub username in all URLs below
+Example: Replace "YOUR_USERNAME" with "johndoe" if your GitHub username is johndoe
+This includes banner URL above and all badge URLs below
+-->
+
+[![Core CI](https://github.com/YOUR_USERNAME/cobot-rs/workflows/Core%20CI/badge.svg)](https://github.com/YOUR_USERNAME/cobot-rs/actions/workflows/core.yml)
+[![Mathematical Tests](https://github.com/YOUR_USERNAME/cobot-rs/workflows/Core%20CI/badge.svg?event=push)](https://github.com/YOUR_USERNAME/cobot-rs/actions/workflows/core.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://www.rust-lang.org/)
 
@@ -83,6 +89,10 @@ The mathematical function tests can run on any system and validate the core serv
 
 ## CI/CD Status
 
+<!-- 
+🔧 SETUP INSTRUCTIONS: After pushing to GitHub, update YOUR_USERNAME in the URL below
+-->
+
 Our continuous integration automatically tests:
 - ✅ **Mathematical Functions** - Core servo calculations
 - ✅ **Code Quality** - Formatting and linting  
@@ -90,7 +100,7 @@ Our continuous integration automatically tests:
 - ✅ **Documentation** - Link validation and structure
 - ✅ **Project Structure** - Directory organization
 
-[![View CI Results](https://img.shields.io/github/workflow/status/amadeu01/cobot-rs/Core%20CI?label=tests&logo=github)](https://github.com/amadeu01/cobot-rs/actions)
+[![View CI Results](https://img.shields.io/github/workflow/status/YOUR_USERNAME/cobot-rs/Core%20CI?label=tests&logo=github)](https://github.com/YOUR_USERNAME/cobot-rs/actions)
 
 ## Project Structure
 
@@ -160,6 +170,31 @@ The CI will automatically test your changes for:
 - Code formatting and quality
 - Documentation completeness
 - Script functionality
+
+## Setting Up GitHub Integration
+
+### Step 1: Update URLs
+After forking this repository, replace `YOUR_USERNAME` in the following files with your GitHub username:
+- This README file (banner URL and badge URLs at the top)
+- Any documentation that references the repository
+
+### Step 2: Banner Image
+The banner image should automatically work once you replace YOUR_USERNAME in the URL:
+```markdown
+![Cobot-RS banner](https://raw.githubusercontent.com/YOUR_USERNAME/cobot-rs/main/assets/banner.png)
+```
+
+### Step 3: Enable GitHub Actions
+1. Go to your repository on GitHub
+2. Click on the "Actions" tab
+3. GitHub Actions should automatically detect the workflow files in `.github/workflows/`
+4. The first push to `main` branch will trigger the CI pipeline
+
+### Step 4: Monitor CI Status
+Once set up, you can monitor your CI status:
+- Check the badges at the top of this README
+- Visit the Actions tab in your GitHub repository
+- CI will run automatically on pushes and pull requests
 
 ## License
 
