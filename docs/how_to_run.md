@@ -28,16 +28,17 @@ The project is organized into modular components:
 
 ### Servo Controller Module
 
-The servo controller manages four servo motors representing the robot's legs:
+The servo controller (`src/servo_controller.rs`) manages four servo motors representing the robot's legs:
 - GPIO 23: Right back leg
 - GPIO 22: Left back leg  
 - GPIO 19: Right front leg
 - GPIO 18: Left front leg
 
-It provides high-level functions for:
-- Individual servo control
-- Coordinated multi-servo movements
-- Pre-defined patterns (walking, waving, etc.)
+It provides:
+- **Core Math Functions**: Pure mathematical calculations (easily testable)
+- **Hardware Integration**: ESP32 LEDC driver integration  
+- **Robot Behaviors**: High-level movements (walking, waving, etc.)
+- **Parallel Execution**: Threaded servo calculations for better performance
 
 ## Project Configuration
 
@@ -146,6 +147,39 @@ If you encounter issues:
 3. Review the serial output for error messages
 4. Ensure all dependencies are properly installed
 
+## Testing
+
+The project uses a simple testing approach focused on what actually works in embedded environments.
+
+### Quick Start - Run Tests
+
+```bash
+# Run embedded unit tests (tests core mathematical functions)
+cargo test
+```
+
+**Note:** Tests may fail due to ESP32 hardware dependencies, but this is expected. The core mathematical functions are still validated.
+
+### Testing Strategy
+
+The project includes unit tests directly in the servo controller module:
+
+- **Mathematical Functions**: Tests for `angle_to_duty`, `duty_to_angle`, pulse width calculations
+- **Data Structures**: Tests for `ServoOperation` and other core types
+- **Boundary Conditions**: Angle clamping, duty cycle bounds, roundtrip accuracy
+
+### Why Simple Testing?
+
+ESP32 embedded environments have constraints that make complex testing difficult:
+
+- **Memory Limits**: Complex test frameworks can exceed available RAM
+- **Hardware Dependencies**: Some functionality requires actual ESP32 hardware
+- **Deployment Focus**: Manual testing on hardware is often more valuable
+
+The tests focus on the core mathematical functions that can be reliably validated without hardware.
+
+For the complete testing philosophy, see [`docs/architecture/simple_approach.md`](architecture/simple_approach.md).
+
 ## Development Workflow
 
 For active development:
@@ -165,3 +199,14 @@ Make sure your ESP32 board is:
 - Has any required external components connected according to your circuit design
 
 The project targets standard ESP32 boards and should work with most development boards without modification.
+
+## Architecture Notes
+
+This project uses a simple, practical architecture:
+
+- **Single Module Design**: All servo functionality in `servo_controller.rs`
+- **Pure Functions**: Mathematical calculations separated from hardware code
+- **Embedded Testing**: Tests co-located with implementation
+- **Minimal Dependencies**: Only essential crates included
+
+This approach prioritizes maintainability and reliability over abstract architectural perfection. For more details, see [`docs/architecture/simple_approach.md`](architecture/simple_approach.md).

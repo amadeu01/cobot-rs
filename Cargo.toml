@@ -5,21 +5,32 @@ authors      = ["Amadeu Cavalcante <amadeu01@gmail.com>"]
 rust-version = "1.88"
 version      = "0.1.0"
 
+# Library target
+[lib]
+name = "cobot_rs"
+path = "src/servo_controller.rs"
+
+# Binary target for ESP32
 [[bin]]
 name = "cobot-rs"
+path = "src/main.rs"
 harness = false
+
+# Features for conditional compilation
+[features]
+default = ["esp32"]
+esp32 = ["esp-idf-svc", "esp-idf-hal", "esp-idf-sys"]
+std = []
+experimental = ["esp-idf-svc/experimental"]
 
 [dependencies]
 log = "0.4.17"
-esp-idf-svc = { version = "0.51", features = ["native"] }
-esp-idf-hal = { version = "0.45.2", features = ["native"] }
-esp-idf-sys = { version = "0.36.1", features = ["native"] }
-# embedded-svc = "=0.28.1"
 anyhow = "1.0"
 
-[features]
-default = []
-experimental = ["esp-idf-svc/experimental"]
+# ESP32 dependencies (optional)
+esp-idf-svc = { version = "0.51", features = ["native"], optional = true }
+esp-idf-hal = { version = "0.45.2", features = ["native"], optional = true }
+esp-idf-sys = { version = "0.36.1", features = ["native"], optional = true }
 
 [profile.dev]
 # Rust debug is too slow.

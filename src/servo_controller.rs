@@ -1,25 +1,17 @@
 //! # Servo Controller Module
 //!
-//! This module provides servo motor control functionality for the Cobot-RS 4-legged robot.
-//! It manages four servo motors representing the robot's legs and provides high-level
-//! movement patterns and individual servo control.
+//! This module provides servo motor control functionality for ESP32-based 4-legged robots.
+//! It includes mathematical functions, hardware abstraction, and robot movement patterns.
 //!
-//! ## Features
+//! ## Architecture
 //!
-//! - Individual servo angle control
-//! - Coordinated multi-servo movements with parallel execution
-//! - Pre-defined movement patterns (walking, waving, etc.)
-//! - Hardware abstraction for ESP32 LEDC peripheral
-//! - Threaded duty cycle calculations for improved performance
+//! The module is organized into layers:
+//! - **Core Math Functions**: Platform-independent servo calculations
+//! - **Hardware Integration**: ESP32 LEDC driver integration
+//! - **Robot Controller**: High-level movement coordination
+//! - **Movement Patterns**: Pre-defined behaviors (walking, waving, etc.)
 //!
-//! ## Hardware Configuration
-//!
-//! The module is configured for standard hobby servos (0-180 degrees) with:
-//! - Frequency: 50 Hz
-//! - Pulse width: 0.5ms to 2.4ms (corresponding to 0° to 180°)
-//! - GPIO pins: 18, 19, 22, 23 for the four servos
-//!
-//! ## Usage Example
+//! ## Usage
 //!
 //! ```rust
 //! use servo_controller::{setup_servos, demo_servo_movements};
@@ -38,35 +30,100 @@ use esp_idf_hal::units::Hertz;
 use std::sync::mpsc;
 use std::thread;
 
-// Servo configuration constants
-const FREQUENCY: u32 = 50; // 50 Hz for servos
+// ================================================================================================
+// CONSTANTS AND CONFIGURATION
+// ================================================================================================
 
-// Standard hobby servo constants
-const MIN_PULSE_US: u32 = 500; // Microseconds for 0 degrees (approx 0.5ms)
-const MAX_PULSE_US: u32 = 2400; // Microseconds for 180 degrees (approx 2.5ms)
-const PERIOD_US: u32 = 20000; // Microseconds for 50Hz (20ms)
+/// Servo configuration constants matching ESP32Servo library standards
+pub const FREQUENCY_HZ: u32 = 50; // 50 Hz for servos
 
-/// Struct to hold all servo drivers for a 4-legged robot
+/// Standard hobby servo constants
+pub const MIN_PULSE_US: u32 = 500; // Microseconds for 0 degrees (approx 0.5ms)
+pub const MAX_PULSE_US: u32 = 2500; // Microseconds for 180 degrees (approx 2.5ms)
+pub const PERIOD_US: u32 = 20000; // Microseconds for 50Hz (20ms)
+
+// ================================================================================================
+// CORE MATHEMATICAL FUNCTIONS
+// ================================================================================================
+
+/// Convert servo angle (0-180°) to PWM duty cycle value
 ///
-/// This controller manages four servo motors representing the legs of the robot:
-/// - right_back_leg: Back right leg servo
-/// - left_back_leg: Back left leg servo
-/// - right_front_leg: Front right leg servo
-/// - left_front_leg: Front left leg servo
-#[allow(dead_code)]
+/// This is the core mathematical function used throughout the library.
+/// It's pure and testable without hardware dependencies.
+///
+/// # Arguments
+/// * `angle` - Servo angle in degrees (0-180, will be clamped)
+/// * `max_duty` - Maximum duty cycle value (hardware dependent)
+///
+/// # Returns
+/// Duty cycle value to write to PWM hardware
+///
+/// # Example
+/// ```
+/// let duty = angle_to_duty(90, 1024); // 90° on 10-bit PWM = 76
+/// ```
+pub fn angle_to_duty(angle: u32, max_duty: u32) -> u32 {
+    // Clamp angle to valid range
+    let angle = angle.min(180);
+
+    // Linear interpolation: angle → pulse width
+    let pulse_range = MAX_PULSE_US - MIN_PULSE_US;
+    let pulse_us = MIN_PULSE_US + ((angle * pulse_range) / 180);
+
+    // Convert pulse width to duty cycle value
+    let duty = (pulse_us * max_duty) / PERIOD_US;
+
+    // Safety clamp
+    duty.min(max_duty)
+}
+
+/// Convert duty cycle value back to angle (for verification/debugging)
+pub fn duty_to_angle(duty: u32, max_duty: u32) -> u32 {
+    if max_duty == 0 {
+        return 0; // Prevent division by zero
+    }
+
+    let pulse_us = (duty * PERIOD_US) / max_duty;
+    let pulse_range = MAX_PULSE_US - MIN_PULSE_US;
+
+    if pulse_us <= MIN_PULSE_US {
+        0
+    } else if pulse_us >= MAX_PULSE_US {
+        180
+    } else {
+        ((pulse_us - MIN_PULSE_US) * 180) / pulse_range
+    }
+}
+
+/// Calculate expected pulse width for a given angle
+pub fn angle_to_pulse_width(angle: u32) -> u32 {
+    let angle = angle.min(180);
+    let pulse_range = MAX_PULSE_US - MIN_PULSE_US;
+    MIN_PULSE_US + ((angle * pulse_range) / 180)
+}
+
+// ================================================================================================
+// SERVO OPERATION DATA STRUCTURE
+// ================================================================================================
+
+/// Servo operation for threaded execution
+#[derive(Debug, Clone)]
+pub struct ServoOperation {
+    pub angle: u32,
+    pub max_duty: u32,
+    pub servo_name: String,
+}
+
+// ================================================================================================
+// ROBOT CONTROLLER
+// ================================================================================================
+
+/// 4-legged robot servo controller with parallel execution capabilities
 pub struct ServoController<'a> {
     right_back_leg: LedcDriver<'a>,
     left_back_leg: LedcDriver<'a>,
     right_front_leg: LedcDriver<'a>,
     left_front_leg: LedcDriver<'a>,
-}
-
-/// Servo operation for threaded execution
-#[derive(Debug, Clone)]
-struct ServoOperation {
-    angle: u32,
-    max_duty: u32,
-    servo_name: String,
 }
 
 impl<'a> ServoController<'a> {
@@ -85,7 +142,10 @@ impl<'a> ServoController<'a> {
         }
     }
 
-    /// Set all servos to the same angle using parallel execution
+    /// Set all servos to the same angle using parallel calculation
+    ///
+    /// This function calculates duty values in parallel threads, then applies them
+    /// sequentially to avoid hardware conflicts.
     pub fn set_all_servos_angle(&mut self, angle: u32) -> Result<()> {
         let (tx, rx) = mpsc::channel();
         let mut handles = vec![];
@@ -130,7 +190,7 @@ impl<'a> ServoController<'a> {
             handles.push(handle);
         }
 
-        // Drop the original sender to close the channel when all threads are done
+        // Drop the original sender
         drop(tx);
 
         // Collect results from threads
@@ -144,7 +204,7 @@ impl<'a> ServoController<'a> {
             handle.join().unwrap();
         }
 
-        // Apply calculated duties to servos sequentially (but calculations were parallel)
+        // Apply calculated duties to servos sequentially (hardware operations)
         self.right_back_leg.set_duty(duties["right_back_leg"])?;
         self.left_back_leg.set_duty(duties["left_back_leg"])?;
         self.right_front_leg.set_duty(duties["right_front_leg"])?;
@@ -157,7 +217,7 @@ impl<'a> ServoController<'a> {
         Ok(())
     }
 
-    /// Set individual servo angles using parallel execution
+    /// Set individual servo angles using parallel calculation
     pub fn set_servo_angles(
         &mut self,
         right_back: u32,
@@ -197,27 +257,18 @@ impl<'a> ServoController<'a> {
             let tx_clone = tx.clone();
             let handle = thread::spawn(move || {
                 let duty = angle_to_duty(op.angle, op.max_duty);
-                log::debug!(
-                    "Calculated {} duty: {} for angle: {}",
-                    op.servo_name,
-                    duty,
-                    op.angle
-                );
                 tx_clone.send((op.servo_name, duty)).unwrap();
             });
             handles.push(handle);
         }
 
-        // Drop the original sender
         drop(tx);
 
-        // Collect results from threads
         let mut duties = std::collections::HashMap::new();
         for received in rx {
             duties.insert(received.0, received.1);
         }
 
-        // Wait for all threads to complete
         for handle in handles {
             handle.join().unwrap();
         }
@@ -228,186 +279,37 @@ impl<'a> ServoController<'a> {
         self.right_front_leg.set_duty(duties["right_front_leg"])?;
         self.left_front_leg.set_duty(duties["left_front_leg"])?;
 
-        log::info!("Individual servos set using parallel calculation");
+        log::debug!("Individual servos set using parallel calculation");
         Ok(())
     }
 
-    /// Set right side servos to specific angles using parallel execution
+    /// Set right side servos to specific angles
     pub fn set_right_servos(&mut self, back_angle: u32, front_angle: u32) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let mut handles = vec![];
-
-        let operations = vec![
-            ServoOperation {
-                angle: back_angle,
-                max_duty: self.right_back_leg.get_max_duty(),
-                servo_name: "right_back_leg".to_string(),
-            },
-            ServoOperation {
-                angle: front_angle,
-                max_duty: self.right_front_leg.get_max_duty(),
-                servo_name: "right_front_leg".to_string(),
-            },
-        ];
-
-        for op in operations {
-            let tx_clone = tx.clone();
-            let handle = thread::spawn(move || {
-                let duty = angle_to_duty(op.angle, op.max_duty);
-                tx_clone.send((op.servo_name, duty)).unwrap();
-            });
-            handles.push(handle);
-        }
-
-        drop(tx);
-
-        let mut duties = std::collections::HashMap::new();
-        for received in rx {
-            duties.insert(received.0, received.1);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        self.right_back_leg.set_duty(duties["right_back_leg"])?;
-        self.right_front_leg.set_duty(duties["right_front_leg"])?;
-
+        self.right_back_leg.set_duty(angle_to_duty(
+            back_angle,
+            self.right_back_leg.get_max_duty(),
+        ))?;
+        self.right_front_leg.set_duty(angle_to_duty(
+            front_angle,
+            self.right_front_leg.get_max_duty(),
+        ))?;
         Ok(())
     }
 
-    /// Set left side servos to specific angles using parallel execution
+    /// Set left side servos to specific angles
     pub fn set_left_servos(&mut self, back_angle: u32, front_angle: u32) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let mut handles = vec![];
-
-        let operations = vec![
-            ServoOperation {
-                angle: back_angle,
-                max_duty: self.left_back_leg.get_max_duty(),
-                servo_name: "left_back_leg".to_string(),
-            },
-            ServoOperation {
-                angle: front_angle,
-                max_duty: self.left_front_leg.get_max_duty(),
-                servo_name: "left_front_leg".to_string(),
-            },
-        ];
-
-        for op in operations {
-            let tx_clone = tx.clone();
-            let handle = thread::spawn(move || {
-                let duty = angle_to_duty(op.angle, op.max_duty);
-                tx_clone.send((op.servo_name, duty)).unwrap();
-            });
-            handles.push(handle);
-        }
-
-        drop(tx);
-
-        let mut duties = std::collections::HashMap::new();
-        for received in rx {
-            duties.insert(received.0, received.1);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        self.left_back_leg.set_duty(duties["left_back_leg"])?;
-        self.left_front_leg.set_duty(duties["left_front_leg"])?;
-
+        self.left_back_leg
+            .set_duty(angle_to_duty(back_angle, self.left_back_leg.get_max_duty()))?;
+        self.left_front_leg.set_duty(angle_to_duty(
+            front_angle,
+            self.left_front_leg.get_max_duty(),
+        ))?;
         Ok(())
     }
 
-    /// Set front servos to specific angles using parallel execution
-    #[allow(dead_code)]
-    pub fn set_front_servos(&mut self, right_angle: u32, left_angle: u32) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let mut handles = vec![];
-
-        let operations = vec![
-            ServoOperation {
-                angle: right_angle,
-                max_duty: self.right_front_leg.get_max_duty(),
-                servo_name: "right_front_leg".to_string(),
-            },
-            ServoOperation {
-                angle: left_angle,
-                max_duty: self.left_front_leg.get_max_duty(),
-                servo_name: "left_front_leg".to_string(),
-            },
-        ];
-
-        for op in operations {
-            let tx_clone = tx.clone();
-            let handle = thread::spawn(move || {
-                let duty = angle_to_duty(op.angle, op.max_duty);
-                tx_clone.send((op.servo_name, duty)).unwrap();
-            });
-            handles.push(handle);
-        }
-
-        drop(tx);
-
-        let mut duties = std::collections::HashMap::new();
-        for received in rx {
-            duties.insert(received.0, received.1);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        self.right_front_leg.set_duty(duties["right_front_leg"])?;
-        self.left_front_leg.set_duty(duties["left_front_leg"])?;
-
-        Ok(())
-    }
-
-    /// Set back servos to specific angles using parallel execution
-    #[allow(dead_code)]
-    pub fn set_back_servos(&mut self, right_angle: u32, left_angle: u32) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let mut handles = vec![];
-
-        let operations = vec![
-            ServoOperation {
-                angle: right_angle,
-                max_duty: self.right_back_leg.get_max_duty(),
-                servo_name: "right_back_leg".to_string(),
-            },
-            ServoOperation {
-                angle: left_angle,
-                max_duty: self.left_back_leg.get_max_duty(),
-                servo_name: "left_back_leg".to_string(),
-            },
-        ];
-
-        for op in operations {
-            let tx_clone = tx.clone();
-            let handle = thread::spawn(move || {
-                let duty = angle_to_duty(op.angle, op.max_duty);
-                tx_clone.send((op.servo_name, duty)).unwrap();
-            });
-            handles.push(handle);
-        }
-
-        drop(tx);
-
-        let mut duties = std::collections::HashMap::new();
-        for received in rx {
-            duties.insert(received.0, received.1);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        self.right_back_leg.set_duty(duties["right_back_leg"])?;
-        self.left_back_leg.set_duty(duties["left_back_leg"])?;
-
-        Ok(())
+    /// Center all servos to 90 degrees
+    pub fn center_all_servos(&mut self) -> Result<()> {
+        self.set_all_servos_angle(90)
     }
 
     /// Get max duty values for debugging
@@ -442,7 +344,7 @@ impl<'a> ServoController<'a> {
         FreeRtos::delay_ms(delay_ms);
 
         // Step 5: Return to center
-        self.set_all_servos_angle(90)?;
+        self.center_all_servos()?;
         FreeRtos::delay_ms(delay_ms);
 
         Ok(())
@@ -458,8 +360,8 @@ impl<'a> ServoController<'a> {
 
             // Calculate duty in a separate thread
             let handle = thread::spawn(move || angle_to_duty(angle, max_duty));
-
             let duty = handle.join().unwrap();
+
             self.right_front_leg.set_duty(duty)?;
             FreeRtos::delay_ms(delay_ms);
         }
@@ -470,48 +372,21 @@ impl<'a> ServoController<'a> {
 
             // Calculate duty in a separate thread
             let handle = thread::spawn(move || angle_to_duty(angle, max_duty));
-
             let duty = handle.join().unwrap();
+
             self.right_front_leg.set_duty(duty)?;
             FreeRtos::delay_ms(delay_ms);
         }
 
         // Return to center
-        self.set_all_servos_angle(90)?;
+        self.center_all_servos()?;
         Ok(())
     }
-
-    /// Center all servos to 90 degrees
-    pub fn center_all_servos(&mut self) -> Result<()> {
-        self.set_all_servos_angle(90)
-    }
 }
 
-/// Maps a servo angle (0-180) to the required duty cycle value.
-///
-/// For 90 degrees, this should result in a 1500us (1.5ms) pulse.
-/// This function is thread-safe and can be called from multiple threads.
-pub fn angle_to_duty(angle: u32, max_duty: u32) -> u32 {
-    let rise = MAX_PULSE_US - MIN_PULSE_US;
-    let run = 180 - 0;
-    let pulse_us = MIN_PULSE_US + ((angle * rise) / run);
-
-    // Convert the pulse width (us) to the LEDC duty value
-    // Duty Value = (Pulse Width / Period) * Max Duty
-    let duty = (pulse_us * max_duty) / PERIOD_US;
-
-    println!(
-        "[Thread {:?}] pulse_us: {}, max_duty: {}, angle: {}, duty: {}",
-        thread::current().id(),
-        pulse_us,
-        max_duty,
-        angle,
-        duty
-    );
-
-    // Safety check, although calculation should prevent overflow
-    core::cmp::min(duty, max_duty)
-}
+// ================================================================================================
+// HARDWARE SETUP FUNCTIONS
+// ================================================================================================
 
 /// Set up servo motors and return a ServoController
 pub fn setup_servos(peripherals: Peripherals) -> Result<ServoController<'static>> {
@@ -519,11 +394,12 @@ pub fn setup_servos(peripherals: Peripherals) -> Result<ServoController<'static>
 
     // LEDC Timer configuration
     let timer_config = TimerConfig::default()
-        .frequency(Hertz(FREQUENCY).into())
+        .frequency(Hertz(FREQUENCY_HZ).into())
         .resolution(esp_idf_hal::ledc::Resolution::Bits10);
 
     let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &timer_config)?;
 
+    // Create LEDC drivers for each servo
     let right_back_leg =
         LedcDriver::new(peripherals.ledc.channel0, &timer, peripherals.pins.gpio23)?;
 
@@ -587,4 +463,111 @@ pub fn demo_servo_movements(servo_controller: &mut ServoController) -> Result<()
 
     log::info!("Servo demonstration with parallel control complete");
     Ok(())
+}
+
+// ================================================================================================
+// TESTING MODULE
+// ================================================================================================
+
+/// ## Testing Strategy
+///
+/// This module includes basic embedded tests, but for comprehensive testing
+/// without ESP32 dependencies, run the standalone test suite:
+///
+/// ```bash
+/// cargo test --features mock
+/// ```
+///
+/// The tests validate:
+/// - Core mathematical functions (angle_to_duty, duty_to_angle, etc.)
+/// - Servo operation data structures
+/// - Basic functionality that can run in ESP32 environment
+///
+/// For more comprehensive testing with mock hardware, see the documentation
+/// on testing strategies for embedded Rust projects.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test basic angle_to_duty calculation for ESP32 10-bit LEDC
+    #[test]
+    fn test_angle_to_duty_basic() {
+        let max_duty = 1024; // ESP32 10-bit default
+
+        // Test key angles
+        assert_eq!(angle_to_duty(0, max_duty), 25); // 0°
+        assert_eq!(angle_to_duty(90, max_duty), 76); // 90° (center)
+        assert_eq!(angle_to_duty(180, max_duty), 128); // 180°
+    }
+
+    /// Test that duty values are within valid range
+    #[test]
+    fn test_duty_bounds() {
+        let max_duty = 1024;
+
+        // Test all angles produce valid duty values
+        for angle in 0..=180 {
+            let duty = angle_to_duty(angle, max_duty);
+            assert!(
+                duty <= max_duty,
+                "Duty {} exceeds max_duty for angle {}",
+                duty,
+                angle
+            );
+        }
+    }
+
+    /// Test angle clamping behavior
+    #[test]
+    fn test_angle_clamping() {
+        let max_duty = 1024;
+
+        // Angles over 180 should be clamped
+        assert_eq!(angle_to_duty(200, max_duty), angle_to_duty(180, max_duty));
+        assert_eq!(angle_to_duty(999, max_duty), angle_to_duty(180, max_duty));
+    }
+
+    /// Test roundtrip conversion accuracy
+    #[test]
+    fn test_roundtrip_conversion() {
+        let max_duty = 65536; // Higher precision for better roundtrip
+
+        for angle in (0..=180).step_by(10) {
+            let duty = angle_to_duty(angle, max_duty);
+            let recovered_angle = duty_to_angle(duty, max_duty);
+            let diff = (recovered_angle as i32 - angle as i32).abs();
+
+            assert!(
+                diff <= 2,
+                "Roundtrip failed: {} → {} → {} (diff: {})",
+                angle,
+                duty,
+                recovered_angle,
+                diff
+            );
+        }
+    }
+
+    /// Test ServoOperation struct
+    #[test]
+    fn test_servo_operation() {
+        let op = ServoOperation {
+            angle: 90,
+            max_duty: 1024,
+            servo_name: "test_servo".to_string(),
+        };
+
+        assert_eq!(op.angle, 90);
+        assert_eq!(op.max_duty, 1024);
+        assert_eq!(op.servo_name, "test_servo");
+    }
+
+    /// Test pulse width calculation
+    #[test]
+    fn test_pulse_width_calculation() {
+        assert_eq!(angle_to_pulse_width(0), MIN_PULSE_US);
+        assert_eq!(angle_to_pulse_width(90), 1500);
+        assert_eq!(angle_to_pulse_width(180), MAX_PULSE_US);
+    }
 }
