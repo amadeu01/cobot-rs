@@ -26,7 +26,7 @@ fn angle_to_duty(angle: u32, max_duty: u32) -> u32 {
     let duty = (pulse_us * max_duty) / PERIOD_US;
     
     // Safety check, although calculation should prevent overflow
-    log::info!("max_duty: {} duty {} , pulse width: {}", max_duty, duty, pulse_us);
+    log::info!("angle_to_duty -> angle: {}, max: {}, duty: {}, pulse_us: {}", angle, max_duty, duty, pulse_us);
     core::cmp::min(duty, max_duty) 
 }
 
@@ -104,19 +104,22 @@ fn setup_servos(peripherals: Peripherals) -> Result<()> {
     log::info!("Start Servos initialized to 90 degrees.");
     
     // Check for any errors before proceeding
-    if let Err(e) = right_back_leg.set_duty(angle_to_duty(90, right_back_leg.get_max_duty())) {
+    if let Err(e) = right_back_leg.set_duty(angle_to_duty(180, right_back_leg.get_max_duty())) {
         log::error!("Error setting right_back_leg duty: {:?}", e);
     }
-    if let Err(e) = left_back_leg.set_duty(angle_to_duty(90, left_back_leg.get_max_duty())) {
+    if let Err(e) = left_back_leg.set_duty(angle_to_duty(180, left_back_leg.get_max_duty())) {
         log::error!("Error setting left_back_leg duty: {:?}", e);
     }
-    if let Err(e) = right_front_leg.set_duty(angle_to_duty(90, right_front_leg.get_max_duty())) {
+    if let Err(e) = right_front_leg.set_duty(angle_to_duty(180, right_front_leg.get_max_duty())) {
         log::error!("Error setting right_front_leg duty: {:?}", e);
     }
-    if let Err(e) = left_front_leg.set_duty(angle_to_duty(90, left_front_leg.get_max_duty())) {
+    if let Err(e) = left_front_leg.set_duty(angle_to_duty(180, left_front_leg.get_max_duty())) {
         log::error!("Error setting left_front_leg duty: {:?}", e);
     }
 
+    FreeRtos::delay_ms(1000);
+    FreeRtos::delay_ms(1000);
+    
     log::info!("End Servos initialized to 90 degrees.");
 
     Ok(())
